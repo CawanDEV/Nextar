@@ -34,6 +34,28 @@ func createProduct(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
  err:=db.QueryRow(r.Context(),"INSERT INTO products(sku,name,description,unit,quantity,min_quantity,price) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,created_at",p.SKU,p.Name,p.Description,p.Unit,p.Quantity,p.MinQuantity,p.Price).Scan(&p.ID,&p.CreatedAt)
  if err!=nil{writeJSON(w,409,map[string]string{"error":"could not create product; SKU may already exist"});return};writeJSON(w,201,p)
 }
+func updateProduct(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
+ id:=r.PathValue("id")
+ if _,err:=uuid.Parse(id);err!=nil{writeJSON(w,400,map[string]string{"error":"invalid product id"});return}
+ var p Product;dec:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20));dec.DisallowUnknownFields()
+ if dec.Decode(&p)!=nil{writeJSON(w,400,map[string]string{"error":"invalid JSON"});return}
+ p.SKU=strings.TrimSpace(p.SKU);p.Name=strings.TrimSpace(p.Name);p.Unit=strings.TrimSpace(p.Unit)
+ if p.SKU==""||p.Name==""||p.Unit==""||p.Quantity<0||p.MinQuantity<0||p.Price<0{writeJSON(w,400,map[string]string{"error":"sku, name and unit are required; numeric values must be non-negative"});return}
+ err:=db.QueryRow(r.Context(),"UPDATE products SET sku=$1,name=$2,description=$3,unit=$4,min_quantity=$5,price=$6,updated_at=now() WHERE id=$7 RETURNING quantity,created_at",p.SKU,p.Name,p.Description,p.Unit,p.MinQuantity,p.Price,id).Scan(&p.Quantity,&p.CreatedAt)
+ if errors.Is(err,pgx.ErrNoRows){writeJSON(w,404,map[string]string{"error":"product not found"});return}
+ if err!=nil{writeJSON(w,409,map[string]string{"error":"could not update product; SKU may already exist"});return}
+ p.ID=id;writeJSON(w,200,p)
+}
+func deleteProduct(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
+ id:=r.PathValue("id")
+ if _,err:=uuid.Parse(id);err!=nil{writeJSON(w,400,map[string]string{"error":"invalid product id"});return}
+ var exists,hasMovements bool
+ if err:=db.QueryRow(r.Context(),"SELECT EXISTS(SELECT 1 FROM products WHERE id=$1), EXISTS(SELECT 1 FROM movements WHERE product_id=$1)",id).Scan(&exists,&hasMovements);err!=nil{writeJSON(w,500,map[string]string{"error":"could not check product"});return}
+ if !exists{writeJSON(w,404,map[string]string{"error":"product not found"});return}
+ if hasMovements{writeJSON(w,409,map[string]string{"error":"products with stock history cannot be deleted"});return}
+ if _,err:=db.Exec(r.Context(),"DELETE FROM products WHERE id=$1",id);err!=nil{writeJSON(w,500,map[string]string{"error":"could not delete product"});return}
+ w.WriteHeader(http.StatusNoContent)
+}
 func listMovements(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
  rows,err:=db.Query(r.Context(),"SELECT m.id,m.product_id,p.name,p.sku,m.type,m.quantity,m.note,m.created_at FROM movements m JOIN products p ON p.id=m.product_id ORDER BY m.created_at DESC LIMIT 200")
  if err!=nil{writeJSON(w,500,map[string]string{"error":"could not list movements"});return};defer rows.Close()

@@ -25,18 +25,24 @@ func main() {
  origin := os.Getenv("WEB_ORIGIN")
  if origin == "" { origin = "http://localhost:5173" }
  mux.HandleFunc("/health", func(w http.ResponseWriter,r *http.Request) {
-  if err := db.Ping(r.Context()); err != nil { json(w,503,map[string]string{"status":"unavailable"}); return }
-  json(w,200,map[string]string{"status":"ok","database":"ok"})
+  if err := db.Ping(r.Context()); err != nil { writeJSON(w,503,map[string]string{"status":"unavailable"}); return }
+  writeJSON(w,200,map[string]string{"status":"ok","database":"ok"})
  })
  mux.HandleFunc("/api/v1/products", func(w http.ResponseWriter,r *http.Request) {
   if r.Method == http.MethodGet { listProducts(w,r,db); return }
   if r.Method == http.MethodPost { createProduct(w,r,db); return }
-  json(w,405,map[string]string{"error":"method not allowed"})
+  writeJSON(w,405,map[string]string{"error":"method not allowed"})
+ })
+ mux.HandleFunc("PUT /api/v1/products/{id}", func(w http.ResponseWriter,r *http.Request) {
+  updateProduct(w,r,db)
+ })
+ mux.HandleFunc("DELETE /api/v1/products/{id}", func(w http.ResponseWriter,r *http.Request) {
+  deleteProduct(w,r,db)
  })
  mux.HandleFunc("/api/v1/movements", func(w http.ResponseWriter,r *http.Request) {
   if r.Method == http.MethodGet { listMovements(w,r,db); return }
   if r.Method == http.MethodPost { createMovement(w,r,db); return }
-  json(w,405,map[string]string{"error":"method not allowed"})
+  writeJSON(w,405,map[string]string{"error":"method not allowed"})
  })
  handler := http.HandlerFunc(func(w http.ResponseWriter,r *http.Request) {
   w.Header().Set("Access-Control-Allow-Origin",origin)

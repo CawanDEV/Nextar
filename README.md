@@ -18,6 +18,8 @@ Requer Docker e Docker Compose.
 - GET /health: verifica API e banco.
 - GET /api/v1/products?q=texto&low_stock=true: lista e pesquisa produtos.
 - POST /api/v1/products: cadastra produto.
+- PUT /api/v1/products/{id}: edita os dados do produto sem alterar o saldo.
+- DELETE /api/v1/products/{id}: exclui apenas produtos sem movimentações.
 - GET /api/v1/movements: lista movimentações recentes.
 - POST /api/v1/movements: registra entrada ou saída; saída sem saldo é recusada.
 
