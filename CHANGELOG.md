@@ -8,4 +8,5 @@ Registre cada alteração funcional ou operacional neste arquivo junto com a atu
 - Adicionada edição de produtos e exclusão protegida quando há histórico de estoque. Commit `53109390`.
 - Adicionadas busca e filtros de entrada/saída no histórico de movimentações, com adaptação para telas menores. Commits `77305a7c` e `ceec8340`.
 - Adicionados logs técnicos estruturados, histórico persistente de alterações no banco, tela Registros e instruções para consultar os logs da API.
+- Adicionado cadastro, edição, listagem e exclusão protegida de fornecedores; produtos agora podem ser associados a um fornecedor, exibido na tabela. Incluída migração `003_suppliers.sql` e endpoints documentados.
 
