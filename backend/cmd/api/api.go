@@ -15,7 +15,8 @@ import (
  "github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Product struct { ID string `json:"id"`; SKU string `json:"sku"`; Name string `json:"name"`; Description string `json:"description"`; Unit string `json:"unit"`; Quantity int `json:"quantity"`; MinQuantity int `json:"min_quantity"`; Price float64 `json:"price"`; CreatedAt time.Time `json:"created_at"` }
+type Product struct { ID string `json:"id"`; SKU string `json:"sku"`; Name string `json:"name"`; Description string `json:"description"`; Unit string `json:"unit"`; Quantity int `json:"quantity"`; MinQuantity int `json:"min_quantity"`; Price float64 `json:"price"`; SupplierID string `json:"supplier_id,omitempty"`; SupplierName string `json:"supplier_name,omitempty"`; CreatedAt time.Time `json:"created_at"` }
+type Supplier struct { ID string `json:"id"`; Name string `json:"name"`; ContactName string `json:"contact_name"`; Email string `json:"email"`; Phone string `json:"phone"`; Notes string `json:"notes"`; CreatedAt time.Time `json:"created_at"` }
 type Movement struct { ID string `json:"id"`; ProductID string `json:"product_id"`; ProductName string `json:"product_name,omitempty"`; SKU string `json:"sku,omitempty"`; Type string `json:"type"`; Quantity int `json:"quantity"`; Note string `json:"note"`; CreatedAt time.Time `json:"created_at"` }
 type AuditLog struct { ID string `json:"id"`; Action string `json:"action"`; EntityType string `json:"entity_type"`; EntityID string `json:"entity_id"`; Summary string `json:"summary"`; CreatedAt time.Time `json:"created_at"` }
 func writeJSON(w http.ResponseWriter,code int,v any){w.Header().Set("Content-Type","application/json");w.WriteHeader(code);_ = encodingJSON(w,v)}
@@ -23,10 +24,10 @@ var encodingJSON = func(w http.ResponseWriter,v any) error { return json.NewEnco
 
 func listProducts(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool) {
  q:=strings.TrimSpace(r.URL.Query().Get("q")); low:=r.URL.Query().Get("low_stock")=="true"
- rows,err:=db.Query(r.Context(),"SELECT id,sku,name,description,unit,quantity,min_quantity,price,created_at FROM products WHERE ($1='' OR name ILIKE '%'||$1||'%' OR sku ILIKE '%'||$1||'%') AND (NOT $2 OR quantity<=min_quantity) ORDER BY name LIMIT 200",q,low)
+ rows,err:=db.Query(r.Context(),"SELECT p.id,p.sku,p.name,p.description,p.unit,p.quantity,p.min_quantity,p.price,COALESCE(p.supplier_id::text,''),COALESCE(s.name,''),p.created_at FROM products p LEFT JOIN suppliers s ON s.id=p.supplier_id WHERE ($1='' OR p.name ILIKE '%'||$1||'%' OR p.sku ILIKE '%'||$1||'%') AND (NOT $2 OR p.quantity<=p.min_quantity) ORDER BY p.name LIMIT 200",q,low)
  if err!=nil { writeJSON(w,500,map[string]string{"error":"could not list products"});return }; defer rows.Close()
  items:=[]Product{}
- for rows.Next(){ var p Product; if err:=rows.Scan(&p.ID,&p.SKU,&p.Name,&p.Description,&p.Unit,&p.Quantity,&p.MinQuantity,&p.Price,&p.CreatedAt);err!=nil{writeJSON(w,500,map[string]string{"error":"could not read products"});return};items=append(items,p) }
+ for rows.Next(){ var p Product; if err:=rows.Scan(&p.ID,&p.SKU,&p.Name,&p.Description,&p.Unit,&p.Quantity,&p.MinQuantity,&p.Price,&p.SupplierID,&p.SupplierName,&p.CreatedAt);err!=nil{writeJSON(w,500,map[string]string{"error":"could not read products"});return};items=append(items,p) }
  if rows.Err()!=nil{writeJSON(w,500,map[string]string{"error":"could not read products"});return};writeJSON(w,200,items)
 }
 func createProduct(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
@@ -34,8 +35,9 @@ func createProduct(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
  if dec.Decode(&p)!=nil{writeJSON(w,400,map[string]string{"error":"invalid JSON"});return}
  p.SKU=strings.TrimSpace(p.SKU);p.Name=strings.TrimSpace(p.Name);p.Unit=strings.TrimSpace(p.Unit)
  if p.SKU==""||p.Name==""||p.Unit==""||p.Quantity<0||p.MinQuantity<0||p.Price<0{writeJSON(w,400,map[string]string{"error":"sku, name and unit are required; numeric values must be non-negative"});return}
+ if p.SupplierID!=""{if _,err:=uuid.Parse(p.SupplierID);err!=nil{writeJSON(w,400,map[string]string{"error":"invalid supplier_id"});return}}
 	tx,err:=db.Begin(r.Context());if err!=nil{slog.Error("product create transaction failed","error",err);writeJSON(w,500,map[string]string{"error":"could not create product"});return};defer tx.Rollback(context.Background())
-	err=tx.QueryRow(r.Context(),"INSERT INTO products(sku,name,description,unit,quantity,min_quantity,price) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,created_at",p.SKU,p.Name,p.Description,p.Unit,p.Quantity,p.MinQuantity,p.Price).Scan(&p.ID,&p.CreatedAt)
+	err=tx.QueryRow(r.Context(),"INSERT INTO products(sku,name,description,unit,quantity,min_quantity,price,supplier_id) VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,'')::uuid) RETURNING id,created_at",p.SKU,p.Name,p.Description,p.Unit,p.Quantity,p.MinQuantity,p.Price,p.SupplierID).Scan(&p.ID,&p.CreatedAt)
 	if err!=nil{slog.Error("product create failed","sku",p.SKU,"error",err);writeJSON(w,409,map[string]string{"error":"could not create product; SKU may already exist"});return}
 	if err=recordAudit(r.Context(),tx,"product.created","product",p.ID,"Produto cadastrado: "+p.Name);err!=nil{slog.Error("product audit failed","product_id",p.ID,"error",err);writeJSON(w,500,map[string]string{"error":"could not record product change"});return}
 	if err=tx.Commit(r.Context());err!=nil{slog.Error("product create commit failed","product_id",p.ID,"error",err);writeJSON(w,500,map[string]string{"error":"could not create product"});return};writeJSON(w,201,p)
@@ -47,8 +49,9 @@ func updateProduct(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
  if dec.Decode(&p)!=nil{writeJSON(w,400,map[string]string{"error":"invalid JSON"});return}
  p.SKU=strings.TrimSpace(p.SKU);p.Name=strings.TrimSpace(p.Name);p.Unit=strings.TrimSpace(p.Unit)
  if p.SKU==""||p.Name==""||p.Unit==""||p.Quantity<0||p.MinQuantity<0||p.Price<0{writeJSON(w,400,map[string]string{"error":"sku, name and unit are required; numeric values must be non-negative"});return}
+ if p.SupplierID!=""{if _,err:=uuid.Parse(p.SupplierID);err!=nil{writeJSON(w,400,map[string]string{"error":"invalid supplier_id"});return}}
 	tx,err:=db.Begin(r.Context());if err!=nil{slog.Error("product update transaction failed","product_id",id,"error",err);writeJSON(w,500,map[string]string{"error":"could not update product"});return};defer tx.Rollback(context.Background())
-	err=tx.QueryRow(r.Context(),"UPDATE products SET sku=$1,name=$2,description=$3,unit=$4,min_quantity=$5,price=$6,updated_at=now() WHERE id=$7 RETURNING quantity,created_at",p.SKU,p.Name,p.Description,p.Unit,p.MinQuantity,p.Price,id).Scan(&p.Quantity,&p.CreatedAt)
+	err=tx.QueryRow(r.Context(),"UPDATE products SET sku=$1,name=$2,description=$3,unit=$4,min_quantity=$5,price=$6,supplier_id=NULLIF($7,'')::uuid,updated_at=now() WHERE id=$8 RETURNING quantity,created_at",p.SKU,p.Name,p.Description,p.Unit,p.MinQuantity,p.Price,p.SupplierID,id).Scan(&p.Quantity,&p.CreatedAt)
  if errors.Is(err,pgx.ErrNoRows){writeJSON(w,404,map[string]string{"error":"product not found"});return}
  if err!=nil{writeJSON(w,409,map[string]string{"error":"could not update product; SKU may already exist"});return}
 	if err=recordAudit(r.Context(),tx,"product.updated","product",id,"Produto atualizado: "+p.Name);err!=nil{slog.Error("product audit failed","product_id",id,"error",err);writeJSON(w,500,map[string]string{"error":"could not record product change"});return}
@@ -67,6 +70,33 @@ func deleteProduct(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
 	if _,err=tx.Exec(r.Context(),"DELETE FROM products WHERE id=$1",id);err!=nil{slog.Error("product delete failed","product_id",id,"error",err);writeJSON(w,500,map[string]string{"error":"could not delete product"});return}
 	if err=tx.Commit(r.Context());err!=nil{slog.Error("product delete commit failed","product_id",id,"error",err);writeJSON(w,500,map[string]string{"error":"could not delete product"});return}
  w.WriteHeader(http.StatusNoContent)
+}
+func listSuppliers(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
+	rows,err:=db.Query(r.Context(),"SELECT id,name,contact_name,email,phone,notes,created_at FROM suppliers ORDER BY name LIMIT 200")
+	if err!=nil{slog.Error("supplier query failed","error",err);writeJSON(w,500,map[string]string{"error":"could not list suppliers"});return};defer rows.Close()
+	items:=[]Supplier{};for rows.Next(){var s Supplier;if err=rows.Scan(&s.ID,&s.Name,&s.ContactName,&s.Email,&s.Phone,&s.Notes,&s.CreatedAt);err!=nil{slog.Error("supplier scan failed","error",err);writeJSON(w,500,map[string]string{"error":"could not read suppliers"});return};items=append(items,s)}
+	if err=rows.Err();err!=nil{writeJSON(w,500,map[string]string{"error":"could not read suppliers"});return};writeJSON(w,200,items)
+}
+func createSupplier(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
+	var s Supplier;dec:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20));dec.DisallowUnknownFields();if dec.Decode(&s)!=nil{writeJSON(w,400,map[string]string{"error":"invalid JSON"});return}
+	s.Name=strings.TrimSpace(s.Name);s.ContactName=strings.TrimSpace(s.ContactName);s.Email=strings.TrimSpace(s.Email);s.Phone=strings.TrimSpace(s.Phone)
+	if s.Name==""{writeJSON(w,400,map[string]string{"error":"supplier name is required"});return}
+	tx,err:=db.Begin(r.Context());if err!=nil{writeJSON(w,500,map[string]string{"error":"could not create supplier"});return};defer tx.Rollback(context.Background())
+	err=tx.QueryRow(r.Context(),"INSERT INTO suppliers(name,contact_name,email,phone,notes) VALUES($1,$2,$3,$4,$5) RETURNING id,created_at",s.Name,s.ContactName,s.Email,s.Phone,s.Notes).Scan(&s.ID,&s.CreatedAt);if err!=nil{slog.Error("supplier create failed","error",err);writeJSON(w,500,map[string]string{"error":"could not create supplier"});return}
+	if err=recordAudit(r.Context(),tx,"supplier.created","supplier",s.ID,"Fornecedor cadastrado: "+s.Name);err!=nil{writeJSON(w,500,map[string]string{"error":"could not record supplier change"});return};if err=tx.Commit(r.Context());err!=nil{writeJSON(w,500,map[string]string{"error":"could not create supplier"});return};writeJSON(w,201,s)
+}
+func updateSupplier(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
+	id:=r.PathValue("id");if _,err:=uuid.Parse(id);err!=nil{writeJSON(w,400,map[string]string{"error":"invalid supplier id"});return}
+	var s Supplier;dec:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20));dec.DisallowUnknownFields();if dec.Decode(&s)!=nil{writeJSON(w,400,map[string]string{"error":"invalid JSON"});return};s.Name=strings.TrimSpace(s.Name);if s.Name==""{writeJSON(w,400,map[string]string{"error":"supplier name is required"});return}
+	tx,err:=db.Begin(r.Context());if err!=nil{writeJSON(w,500,map[string]string{"error":"could not update supplier"});return};defer tx.Rollback(context.Background())
+	err=tx.QueryRow(r.Context(),"UPDATE suppliers SET name=$1,contact_name=$2,email=$3,phone=$4,notes=$5,updated_at=now() WHERE id=$6 RETURNING created_at",s.Name,strings.TrimSpace(s.ContactName),strings.TrimSpace(s.Email),strings.TrimSpace(s.Phone),s.Notes,id).Scan(&s.CreatedAt);if errors.Is(err,pgx.ErrNoRows){writeJSON(w,404,map[string]string{"error":"supplier not found"});return};if err!=nil{writeJSON(w,500,map[string]string{"error":"could not update supplier"});return}
+	s.ID=id;if err=recordAudit(r.Context(),tx,"supplier.updated","supplier",id,"Fornecedor atualizado: "+s.Name);err!=nil{writeJSON(w,500,map[string]string{"error":"could not record supplier change"});return};if err=tx.Commit(r.Context());err!=nil{writeJSON(w,500,map[string]string{"error":"could not update supplier"});return};writeJSON(w,200,s)
+}
+func deleteSupplier(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
+	id:=r.PathValue("id");if _,err:=uuid.Parse(id);err!=nil{writeJSON(w,400,map[string]string{"error":"invalid supplier id"});return}
+	var exists,hasProducts bool;if err:=db.QueryRow(r.Context(),"SELECT EXISTS(SELECT 1 FROM suppliers WHERE id=$1),EXISTS(SELECT 1 FROM products WHERE supplier_id=$1)",id).Scan(&exists,&hasProducts);err!=nil{writeJSON(w,500,map[string]string{"error":"could not check supplier"});return};if !exists{writeJSON(w,404,map[string]string{"error":"supplier not found"});return};if hasProducts{writeJSON(w,409,map[string]string{"error":"suppliers linked to products cannot be deleted"});return}
+	tx,err:=db.Begin(r.Context());if err!=nil{writeJSON(w,500,map[string]string{"error":"could not delete supplier"});return};defer tx.Rollback(context.Background());var name string;if err=tx.QueryRow(r.Context(),"SELECT name FROM suppliers WHERE id=$1 FOR UPDATE",id).Scan(&name);err!=nil{writeJSON(w,404,map[string]string{"error":"supplier not found"});return}
+	if err=recordAudit(r.Context(),tx,"supplier.deleted","supplier",id,"Fornecedor excluído: "+name);err!=nil{writeJSON(w,500,map[string]string{"error":"could not record supplier change"});return};if _,err=tx.Exec(r.Context(),"DELETE FROM suppliers WHERE id=$1",id);err!=nil{writeJSON(w,500,map[string]string{"error":"could not delete supplier"});return};if err=tx.Commit(r.Context());err!=nil{writeJSON(w,500,map[string]string{"error":"could not delete supplier"});return};w.WriteHeader(http.StatusNoContent)
 }
 func listMovements(w http.ResponseWriter,r *http.Request,db *pgxpool.Pool){
  rows,err:=db.Query(r.Context(),"SELECT m.id,m.product_id,p.name,p.sku,m.type,m.quantity,m.note,m.created_at FROM movements m JOIN products p ON p.id=m.product_id ORDER BY m.created_at DESC LIMIT 200")
@@ -105,6 +135,9 @@ func migrate(ctx context.Context,db *pgxpool.Pool)error{
  _,err=db.Exec(ctx,"CREATE TABLE IF NOT EXISTS movements (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), product_id UUID NOT NULL REFERENCES products(id), type TEXT NOT NULL CHECK(type IN ('in','out')), quantity INTEGER NOT NULL CHECK(quantity>0), note TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT now())");if err!=nil{return err}
 	_,err=db.Exec(ctx,"CREATE INDEX IF NOT EXISTS movements_created_at_idx ON movements(created_at DESC)");if err!=nil{return err}
 	_,err=db.Exec(ctx,"CREATE TABLE IF NOT EXISTS audit_logs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id UUID NOT NULL, summary TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())");if err!=nil{return err}
-	_,err=db.Exec(ctx,"CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs(created_at DESC)");return err
+	_,err=db.Exec(ctx,"CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs(created_at DESC)");if err!=nil{return err}
+	_,err=db.Exec(ctx,"CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL, contact_name TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())");if err!=nil{return err}
+	_,err=db.Exec(ctx,"ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier_id UUID REFERENCES suppliers(id)");if err!=nil{return err}
+	_,err=db.Exec(ctx,"CREATE INDEX IF NOT EXISTS products_supplier_id_idx ON products(supplier_id)");return err
 }
 
