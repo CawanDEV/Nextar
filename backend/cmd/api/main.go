@@ -49,6 +49,11 @@ func main() {
   writeJSON(w,405,map[string]string{"error":"method not allowed"})
  })
 	mux.HandleFunc("GET /api/v1/logs", func(w http.ResponseWriter,r *http.Request) { listAuditLogs(w,r,db) })
+	mux.HandleFunc("/api/v1/suppliers", func(w http.ResponseWriter,r *http.Request) {
+		if r.Method==http.MethodGet{listSuppliers(w,r,db);return};if r.Method==http.MethodPost{createSupplier(w,r,db);return};writeJSON(w,405,map[string]string{"error":"method not allowed"})
+	})
+	mux.HandleFunc("PUT /api/v1/suppliers/{id}",func(w http.ResponseWriter,r *http.Request){updateSupplier(w,r,db)})
+	mux.HandleFunc("DELETE /api/v1/suppliers/{id}",func(w http.ResponseWriter,r *http.Request){deleteSupplier(w,r,db)})
  handler := http.HandlerFunc(func(w http.ResponseWriter,r *http.Request) {
   w.Header().Set("Access-Control-Allow-Origin",origin)
   w.Header().Set("Access-Control-Allow-Headers","Content-Type")
