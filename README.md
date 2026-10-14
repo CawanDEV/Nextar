@@ -23,10 +23,16 @@ Requer Docker e Docker Compose.
 - GET /api/v1/movements: lista movimentações recentes.
 - POST /api/v1/movements: registra entrada ou saída; saída sem saldo é recusada.
 - GET /api/v1/logs: lista até 200 alterações de produtos e movimentações.
+- GET /api/v1/suppliers: lista fornecedores.
+- POST /api/v1/suppliers: cadastra fornecedor.
+- PUT /api/v1/suppliers/{id}: atualiza os dados de um fornecedor.
+- DELETE /api/v1/suppliers/{id}: exclui fornecedor sem produtos associados.
 
 Produto: {"sku":"CAF-001","name":"Café","unit":"un","quantity":12,"min_quantity":3,"price":19.9}
 
 Movimentação: {"product_id":"UUID","type":"in","quantity":2,"note":"compra"}
+
+Fornecedor: {"name":"Distribuidora Central","contact_name":"Pessoa responsável","email":"contato@exemplo.com","phone":"(11) 0000-0000"}
 
 As migrações são aplicadas pela API no início. Os logs técnicos em JSON são enviados para a saída padrão da API (visíveis com `docker compose logs -f api`); o histórico de alterações fica persistido no PostgreSQL e aparece na tela **Registros**. As gravações de negócio e seus registros de auditoria são feitas na mesma transação.
 
