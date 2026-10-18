@@ -2,6 +2,12 @@
 
 Fundação do MVP de controle de estoque: React + TypeScript, API Go e PostgreSQL.
 
+## Vendedor Telegram e testes sem Docker
+
+O módulo local inclui o site, banco SQLite, vendedor Telegram, carrinho, pedidos e checkout com cartão fictício. Requer Node.js 24 LTS. Execute `npm run setup`, copie `.env.example` para `.env`, preencha o token e execute `npm start`. Abra http://localhost:8080.
+
+Consulte [o guia completo e o roteiro de teste](local/README.md). O banco SQLite desse modo é independente do PostgreSQL abaixo; o módulo de vendas ainda não está integrado à API Go/Docker.
+
 ## Executar
 
 Requer Docker e Docker Compose.
