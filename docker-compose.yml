@@ -5,7 +5,7 @@ services:
       POSTGRES_DB: nextar
       POSTGRES_USER: nextar
       POSTGRES_PASSWORD: nextar
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     volumes: [nextar-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nextar -d nextar"]
@@ -18,12 +18,46 @@ services:
       DATABASE_URL: postgres://nextar:nextar@db:5432/nextar?sslmode=disable
       PORT: "8080"
       WEB_ORIGIN: http://localhost:5173
-    ports: ["8080:8080"]
+    expose: ["8080"]
     depends_on:
       db: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  bot:
+    build:
+      context: .
+      dockerfile: local/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://nextar:nextar@db:5432/nextar?sslmode=disable
+      API_TARGET: http://api:8080
+      BIND_HOST: 0.0.0.0
+      PORT: "8080"
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:5173}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALLOWED_USER_IDS: ${TELEGRAM_ALLOWED_USER_IDS:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      STORE_NAME: ${STORE_NAME:-Nextar}
+      STORE_POLICIES: ${STORE_POLICIES:-Ambiente de testes. Retirada simulada, sem frete, entrega ou cobrança real.}
+      STORE_CONTACT: ${STORE_CONTACT:-Solicite atendimento humano ao responsável pela loja.}
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
   web:
     build: ./frontend
-    ports: ["5173:5173"]
-    depends_on: [api]
+    environment:
+      API_PROXY_TARGET: http://bot:8080
+    ports: ["127.0.0.1:5173:5173"]
+    depends_on:
+      bot: {condition: service_healthy}
 volumes:
   nextar-data:

@@ -12,7 +12,19 @@
 
 O site, o vendedor e o checkout deste modo usam **o mesmo arquivo SQLite** em `local/data/nextar.sqlite`. A aprovação de teste aparece no site em até cinco segundos, em Vendas e bot, Produtos, Movimentações e Registros. Preserve esse arquivo para manter os dados. Este banco é **separado do PostgreSQL original**: produtos já cadastrados no Docker não são importados, e este módulo não altera o PostgreSQL. Não inicie as duas APIs na porta 8080 ao mesmo tempo.
 
-O modo Docker/Go original continua disponível, mas ainda não executa o módulo de vendas. Esta implementação entrega o fluxo integrado para testes locais. Migrar pedidos e integração Telegram para a infraestrutura de produção exigirá uma etapa posterior.
+## Docker com o PostgreSQL do site
+
+O Docker agora executa quatro serviços: `db` (PostgreSQL existente), `api` (Go), `bot` (Telegram, pedidos e gateway), `web` (interface). Execute `docker compose up --build` com `TELEGRAM_BOT_TOKEN` no `.env` e abra http://localhost:5173. O checkout também funciona em http://localhost:8080.
+
+O serviço `bot` usa `DATABASE_URL` para acessar os mesmos `products`, `movements` e `audit_logs` da API Go. Pedidos, sessões e offsets ficam em tabelas `sales_*`, no mesmo banco. Não há importação nem cópia do estoque para SQLite. As tabelas são criadas sem apagar os dados existentes e o volume `nextar-data` é mantido.
+
+Para verificar a integração: cadastre um produto no site, compre pelo Telegram e aprove o checkout fictício. Confira o saldo em Produtos e a saída em Movimentações. O pagamento simulado **reduz o estoque do PostgreSQL utilizado pelo site**.
+
+O gateway encaminha os endpoints administrativos de produtos/fornecedores/movimentações para a API Go; endpoints de vendas e checkout são atendidos pelo vendedor. A configuração Vite usa `API_PROXY_TARGET=http://bot:8080` dentro do Docker e localhost fora dele. Ambos os endereços do site chegam ao mesmo banco.
+
+Para ativar IA, preencha `OPENAI_API_KEY` e reinicie com `docker compose up -d --force-recreate bot`. Para conferir estado e erros, use a área Vendas e bot e `docker compose logs -f bot`. O estado Conectado depende de token válido e acesso à internet; um webhook existente ou outra instância do mesmo bot pode impedir polling.
+
+Não rode simultaneamente o processo local e o Docker usando o mesmo token. A configuração não remove webhooks automaticamente. O modo SQLite anterior continua disponível com `npm start` sem `DATABASE_URL`.
 
 ## Atendimento
 
@@ -54,8 +66,10 @@ O checkout aceita **somente o conjunto sintético acima**; não conecte cartões
 
 O processo precisa continuar em execução e ter internet para Telegram e IA. O atendimento só lê mensagens privadas. O site funciona sem internet depois da instalação, e o simulador funciona sem Telegram.
 
-O servidor escuta apenas em `127.0.0.1` e limita hosts/origens para uso local. Não inclui autenticação administrativa ou processamento de pagamentos reais: não publique esta API na internet. O token fica apenas no `.env` ignorado pelo Git. Para substituir um token compartilhado, revogue-o no BotFather e atualize o `.env` local.
+Fora do Docker, o servidor escuta apenas em `127.0.0.1`. No contêiner escuta na rede interna e as portas publicadas ficam restritas ao localhost. Hosts e origens são limitados ao uso local. Não inclui autenticação administrativa ou processamento de pagamentos reais: não publique esta API na internet. O token fica apenas no `.env` ignorado pelo Git. Para substituir um token compartilhado, revogue-o no BotFather e atualize o `.env` local.
 
 ## Verificação
 
-`npm test` executa testes de checkout, isolamento de conversas, duplicidade de updates, concorrência de estoque, expiração, cancelamento, rejeição de cartão e API HTTP. `npm run build --prefix frontend` verifica TypeScript e compila o site.
+`npm ci` instala as dependências do vendedor. `npm test` executa testes de checkout, isolamento de conversas, duplicidade de updates, concorrência de estoque, expiração, cancelamento, rejeição de cartão e API HTTP. `npm run build --prefix frontend` verifica TypeScript e compila o site.
+
+Para verificar a implementação PostgreSQL em um banco de desenvolvimento descartável, configure `POSTGRES_TEST_URL` e execute `npm test`. O teste cria um schema temporário isolado, aplica o schema Go, verifica concorrência com duas conexões e remove o schema ao finalizar. Sem essa variável, somente esse teste é ignorado.

@@ -2,22 +2,30 @@
 
 Fundação do MVP de controle de estoque: React + TypeScript, API Go e PostgreSQL.
 
-## Vendedor Telegram e testes sem Docker
+## Executar com Docker — site e vendedor Telegram
 
-O módulo local inclui o site, banco SQLite, vendedor Telegram, carrinho, pedidos e checkout com cartão fictício. Requer Node.js 24 LTS. Execute `npm run setup`, copie `.env.example` para `.env`, preencha o token e execute `npm start`. Abra http://localhost:8080.
+1. Copie `.env.example` para `.env` na raiz e preencha `TELEGRAM_BOT_TOKEN`.
+2. Execute `docker compose up --build`.
+3. Abra **http://localhost:5173** e entre em **Vendas e bot** para conferir a conexão ou usar o simulador.
+4. Cadastre produtos e descrições, abra o bot no Telegram e envie `/start`.
 
-Consulte [o guia completo e o roteiro de teste](local/README.md). O banco SQLite desse modo é independente do PostgreSQL abaixo; o módulo de vendas ainda não está integrado à API Go/Docker.
+O bot, o checkout e a API Go usam **o mesmo PostgreSQL**, inclusive os produtos já cadastrados. Aprovar o cartão fictício reduz o estoque e grava pedido, movimentação e auditoria na mesma transação. O volume `nextar-data` é preservado; não execute `docker compose down -v` se quiser manter os dados.
 
-## Executar
+- Site: http://localhost:5173 (também servido pelo gateway em http://localhost:8080).
+- API e checkout: http://localhost:8080.
+- PostgreSQL local: localhost:5432 (nextar/nextar).
+- Logs do vendedor: `docker compose logs -f bot`.
+- Depois de alterar token/chave no `.env`: `docker compose up -d --force-recreate bot`.
 
-Requer Docker e Docker Compose.
+O token não é embutido nas imagens nem no código. Sem token, o site e o simulador funcionam, e a tela informa que o Telegram está desativado. Respostas livres com IA exigem `OPENAI_API_KEY`; sem ela, o atendimento guiado mantém catálogo, carrinho e compra de teste.
 
-    docker compose up --build
+Os serviços aguardam banco e API saudáveis antes de iniciar. Portas são publicadas somente em localhost. Links localhost do checkout devem ser abertos no computador que executa o Docker. Não há cobrança nem entrega real; o pagamento é apenas simulado, mas **altera o estoque desse banco**.
 
-- Frontend: http://localhost:5173
-- API: http://localhost:8080
-- Saúde da API: http://localhost:8080/health
-- PostgreSQL: localhost:5432 (nextar/nextar)
+## Testes sem Docker
+
+Requer Node.js 24 LTS. Execute `npm run setup`, copie `.env.example` para `.env`, preencha o token e execute `npm start`. Abra http://localhost:8080.
+
+Esse modo continua usando SQLite separado, a menos que `DATABASE_URL` e `API_TARGET` sejam configurados explicitamente. Consulte [o guia completo e o roteiro de teste](local/README.md).
 
 ## API
 

@@ -1,0 +1,44 @@
+name: Sales integration
+on:
+  push:
+    branches: [main, feat/telegram-docker]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: nextar_test
+          POSTGRES_USER: nextar
+          POSTGRES_PASSWORD: nextar
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U nextar -d nextar_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+        env:
+          POSTGRES_TEST_URL: postgres://nextar:nextar@localhost:5432/nextar_test
+      - run: npm run setup
+      - run: docker compose config --quiet
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up --build -d --wait --wait-timeout 180
+      - run: node local/docker-smoke.mjs
+      - if: always()
+        run: docker compose logs --no-color
+      - if: always()
+        run: docker compose down -v
