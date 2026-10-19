@@ -20,19 +20,23 @@ export function createApp({store=new Store(),config={}}={}){
   if(req.headers.origin&&!['http://localhost:8080','http://127.0.0.1:8080','http://localhost:5173','http://127.0.0.1:5173',config.baseUrl].includes(req.headers.origin))return json(res,403,{error:'Origem não permitida.'});
   try{
    const data=['POST','PUT','DELETE'].includes(req.method)?await body(req):{};
+   if(config.apiTarget&&url.pathname.startsWith('/api/')&&!/^\/api\/v1\/(bot|orders|checkout)(?:\/|$)/.test(url.pathname)){
+    const upstream=await fetch(config.apiTarget+url.pathname+url.search,{method:req.method,headers:{'Content-Type':'application/json'},body:['POST','PUT','DELETE'].includes(req.method)?JSON.stringify(data):undefined,signal:AbortSignal.timeout(15000)});
+    res.writeHead(upstream.status,{'Content-Type':upstream.headers.get('content-type')||'application/json','Cache-Control':'no-store'});res.end(await upstream.text());return;
+   }
    await queue(async()=>{
     const path=url.pathname,method=req.method;
-    if(method==='GET'&&path==='/health')return json(res,200,{status:'ok',database:'sqlite',mode:'local-test'});
+    if(method==='GET'&&path==='/health'){if(config.apiTarget)await store.get('SELECT 1');return json(res,200,{status:'ok',database:config.apiTarget?'postgresql':'sqlite',mode:config.apiTarget?'docker-test':'local-test'});}
     if(method==='GET'&&path==='/api/v1/bot/status')return json(res,200,{...status,ai_enabled:!!config.apiKey,mode:'test'});
     if(method==='POST'&&path==='/api/v1/bot/preview'){
      if(typeof data.text!=='string'||!data.text.trim()||data.text.length>2000)throw new BusinessError('Digite até 2.000 caracteres.');
      return json(res,200,{reply:await assistant.reply('preview',data.text,'Cliente de teste')});
     }
-    if(method==='GET'&&path==='/api/v1/orders')return json(res,200,store.orders());
+    if(method==='GET'&&path==='/api/v1/orders')return json(res,200,await store.orders());
     const checkout=path.match(/^\/api\/v1\/checkout\/([a-f0-9]{64})(\/pay)?$/);
     if(checkout){
-     if(method==='GET'&&!checkout[2]){const o=store.publicOrder(checkout[1]);return json(res,200,{id:o.id,customer_name:o.customer_name,items:o.items,total_cents:o.total_cents,status:o.status,expired:o.expired,expires_at:o.expires_at});}
-     if(method==='POST'&&checkout[2]){const o=store.pay(checkout[1],data);return json(res,200,{id:o.id,status:o.status,total_cents:o.total_cents});}
+     if(method==='GET'&&!checkout[2]){const o=await store.publicOrder(checkout[1]);return json(res,200,{id:o.id,customer_name:o.customer_name,items:o.items,total_cents:o.total_cents,status:o.status,expired:o.expired,expires_at:o.expires_at});}
+     if(method==='POST'&&checkout[2]){const o=await store.pay(checkout[1],data);return json(res,200,{id:o.id,status:o.status,total_cents:o.total_cents});}
      throw new BusinessError('Método não permitido.',405);
     }
     if(path==='/api/v1/products'&&method==='GET'){let p=store.products();const q=(url.searchParams.get('q')||'').toLowerCase();p=p.filter(p=>(p.name+' '+p.sku).toLowerCase().includes(q));if(url.searchParams.get('low_stock')==='true')p=p.filter(p=>p.quantity<=p.min_quantity);return json(res,200,p);}
@@ -53,7 +57,7 @@ export function createApp({store=new Store(),config={}}={}){
      if(!data.name?.trim())throw new BusinessError('Nome é obrigatório.');const id=supplier?.[1]||randomUUID();
      if(supplier&&!store.get('SELECT id FROM suppliers WHERE id=?',id))throw new BusinessError('Fornecedor não encontrado.',404);
      store.transaction(()=>{
-      store.run('INSERT INTO suppliers VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,contact_name=excluded.contact_name,email=excluded.email,phone=excluded.phone,notes=excluded.notes',id,data.name,data.contact_name||'',data.email||'',data.phone||'',data.notes||'',new Date().toISOString());
+      store.run('INSERT INTO suppliers(id,name,contact_name,email,phone,notes,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,contact_name=excluded.contact_name,email=excluded.email,phone=excluded.phone,notes=excluded.notes',id,data.name,data.contact_name||'',data.email||'',data.phone||'',data.notes||'',new Date().toISOString());
       store.audit(supplier?'supplier.updated':'supplier.created','supplier',id,'Fornecedor: '+data.name);
      });return json(res,supplier?200:201,store.get('SELECT * FROM suppliers WHERE id=?',id));
     }
@@ -74,10 +78,12 @@ export function createApp({store=new Store(),config={}}={}){
  return {server,store,assistant,status,queue};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
- mkdirSync(resolve(root,'local/data'),{recursive:true});
+ if(!process.env.DATABASE_URL)mkdirSync(resolve(root,'local/data'),{recursive:true});
  const port=Number(process.env.PORT||8080),config={baseUrl:process.env.PUBLIC_BASE_URL||`http://localhost:${port}`,storeName:process.env.STORE_NAME||'Nextar',policies:process.env.STORE_POLICIES||'Ambiente de testes. Retirada simulada, sem frete, entrega ou cobrança real.',contact:process.env.STORE_CONTACT,apiKey:process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL};
- const app=createApp({store:new Store(resolve(root,'local/data/nextar.sqlite')),config}),controller=new AbortController();
- app.server.listen(port,'127.0.0.1',()=>console.log(`Nextar TESTE: http://localhost:${port} | SQLite local | sem cobrança real`));
+ config.apiTarget=process.env.API_TARGET;
+ const db=process.env.DATABASE_URL?await (await import('./postgres-store.mjs')).PostgresStore.open(process.env.DATABASE_URL):new Store(resolve(root,'local/data/nextar.sqlite'));
+ const app=createApp({store:db,config}),controller=new AbortController();
+ app.server.listen(port,process.env.BIND_HOST||'127.0.0.1',()=>console.log(`Nextar TESTE: http://localhost:${port} | ${process.env.DATABASE_URL?'PostgreSQL compartilhado':'SQLite local'} | sem cobrança real`));
  if(process.env.TELEGRAM_BOT_TOKEN)void runTelegram({...app,token:process.env.TELEGRAM_BOT_TOKEN,allowedIds:(process.env.TELEGRAM_ALLOWED_USER_IDS||'').split(',').filter(Boolean),signal:controller.signal});
- const stop=()=>{controller.abort();app.server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),1500).unref();};process.on('SIGINT',stop);process.on('SIGTERM',stop);
+ const stop=()=>{controller.abort();app.server.close(async()=>{await db.close?.();process.exit(0)});setTimeout(()=>process.exit(0),1500).unref();};process.on('SIGINT',stop);process.on('SIGTERM',stop);
 }

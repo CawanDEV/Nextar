@@ -3,7 +3,7 @@ WORKDIR /src
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /api ./cmd/api
+RUN go mod tidy && CGO_ENABLED=0 go build -o /api ./cmd/api
 FROM alpine:3.21
 WORKDIR /app
 COPY --from=build /api /app/api

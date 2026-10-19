@@ -6,12 +6,12 @@ export function telegramClient(token,fetcher=fetch){return async(method,payload=
 export async function processUpdate(store,assistant,update,queue){
  const m=update.message;if(!m?.text||m.chat.type!=='private')return;
  return queue(async()=>{
-  const existing=store.get('SELECT * FROM updates WHERE id=?',update.update_id);if(existing)return existing;
+  const existing=await store.get('SELECT * FROM updates WHERE id=?',update.update_id);if(existing)return existing;
   // O efeito comercial e a resposta são persistidos juntos antes de confirmar o offset.
-  store.db.exec('BEGIN IMMEDIATE');store.depth=1;
+  await store.db.exec('BEGIN IMMEDIATE');store.depth=1;
   try{let reply;try{reply=await assistant.reply(m.chat.id,m.text,m.from?.first_name||'Cliente');}catch(e){if(!e.status)throw e;reply=e.message;}
-   store.run('INSERT INTO updates(id,reply,chat_id) VALUES(?,?,?)',update.update_id,reply,String(m.chat.id));store.db.exec('COMMIT');return store.get('SELECT * FROM updates WHERE id=?',update.update_id);
-  }catch(e){store.db.exec('ROLLBACK');throw e;}finally{store.depth=0;}
+   await store.run('INSERT INTO updates(id,reply,chat_id) VALUES(?,?,?)',update.update_id,reply,String(m.chat.id));await store.db.exec('COMMIT');return store.get('SELECT * FROM updates WHERE id=?',update.update_id);
+  }catch(e){await store.db.exec('ROLLBACK');throw e;}finally{store.depth=0;}
  });
 }
 export async function runTelegram({store,assistant,token,allowedIds=[],queue,signal,status}){
@@ -22,7 +22,7 @@ export async function runTelegram({store,assistant,token,allowedIds=[],queue,sig
    if(webhook.url){status.state='webhook_conflict';status.message='Este bot já tem webhook. Remova-o antes de usar o modo local; nenhuma configuração foi sobrescrita.';return;}
    status.state='connected';status.username=me.username;status.message='Conectado por long polling';
    while(!signal.aborted){
-    const offset=Number(store.get("SELECT value FROM meta WHERE key='telegram_offset'")?.value||0);
+    const offset=Number((await queue(async()=>store.get("SELECT value FROM meta WHERE key='telegram_offset'")))?.value||0);
     const updates=await call('getUpdates',{offset,timeout:25,allowed_updates:['message']});
     for(const u of updates){
      const m=u.message;
