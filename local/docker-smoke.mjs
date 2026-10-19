@@ -5,7 +5,7 @@ async function request(path,method='GET',body){const r=await fetch(base+path,{me
 const health=await request('/health');assert.equal(health.database,'postgresql');
 const sku='CI-'+Date.now(),p=await request('/api/v1/products','POST',{sku,name:'Produto TESTE Docker',description:'Produto sintético criado pelo smoke test',unit:'un',quantity:5,min_quantity:1,price:19.9});
 await request('/api/v1/bot/preview','POST',{text:'/cancelar'});
-await request('/api/v1/bot/preview','POST',{text:`/comprar ${sku} 2`});
+const added=await request('/api/v1/bot/preview','POST',{text:`/comprar ${sku} 2`});assert.match(added.reply,/Adicionei 2/);
 const reply=await request('/api/v1/bot/preview','POST',{text:'/finalizar'}),token=reply.reply.match(/checkout\/([a-f0-9]{64})/)[1];
 const payment={holder:'CLIENTE TESTE',number:'4242424242424242',expiry:'12/30',cvc:'123'};
 await request('/api/v1/checkout/'+token+'/pay','POST',payment);await request('/api/v1/checkout/'+token+'/pay','POST',payment);

@@ -4,7 +4,10 @@ export class Assistant {
  constructor(store,config={}){this.store=store;this.config=config;}
  async reply(chat,text,name='Cliente'){
   const s=await this.store.session(chat), t=normalize(text.trim()),products=await this.store.products();
-  if(/(?:\d[ -]?){13,19}/.test(text))return 'Não envie cartões no chat. Use somente o checkout com os dados fictícios informados na página.';
+  const commandSKU=t.match(/^\/(?:comprar|adicionar|remover)\s+(\S+)(?:\s+\d+)?$/)?.[1];
+  const knownSKU=commandSKU&&products.find(p=>normalize(p.sku)===commandSKU);
+  const cardText=knownSKU?t.replace(commandSKU,''):text;
+  if(/(?:\d[ -]?){13,19}/.test(cardText))return 'Não envie cartões no chat. Use somente o checkout com os dados fictícios informados na página.';
   if(/^\/(start|ajuda|help)(?:\s|$)/.test(t)||/^(oi|ola|bom dia|boa tarde|boa noite)[!. ]*$/.test(t))return `Olá, ${name}! Sou o assistente de vendas da ${this.config.storeName||'Nextar'}.\n${menu}`;
   if(t==='/atendente'||/falar com (um |uma )?(humano|pessoa|atendente)/.test(t))return this.config.contact||'Solicite atendimento ao responsável pela loja. O encaminhamento automático ainda não está configurado.';
   if(t==='/cancelar'){await this.store.cancel(chat);return 'Carrinho limpo e pedidos pendentes cancelados. Pedidos já pagos não foram alterados.';}

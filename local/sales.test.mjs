@@ -56,3 +56,10 @@ test('HTTP: checkout limita dados, valida origem e atualiza API do site',async()
   const unknown=await fetch(base+'/api/v1/checkout/'+'0'.repeat(64));assert.equal(unknown.status,404);
  }finally{await new Promise(r=>server.close(r));store.db.close();}
 });
+
+test('SKU com código numérico longo não é confundido com cartão',async()=>{
+ const s=new Store(),p=product(s,'CI-1234567890123'),a=new Assistant(s);
+ assert.match(await a.reply('sku','/comprar CI-1234567890123 2'),/Adicionei 2/);
+ assert.equal(s.session('sku').cart[p.id],2);
+ assert.match(await a.reply('sku','4242424242424242'),/Não envie cartões/);s.db.close();
+});
