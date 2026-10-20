@@ -45,12 +45,12 @@ test('reentrega de update Telegram não duplica adição ao carrinho',async()=>{
  assert.equal(a.reply,b.reply);assert.equal(store.session('123').cart[p.id],1);store.db.close();
 });
 test('HTTP: checkout limita dados, valida origem e atualiza API do site',async()=>{
- const store=new Store(),p=product(store),o=store.createOrder('a','A',{[p.id]:1}),{server}=createApp({store});
+ const store=new Store(),p=product(store),o=store.createOrder('a','A',{[p.id]:1}),{server}=createApp({store,config:{apiOrigin:'http://localhost:18080',baseUrl:'http://localhost:15173'}});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
  try{
   const get=await fetch(base+'/api/v1/checkout/'+o.token),info=await get.json();assert.equal(info.chat_id,undefined);assert.equal(info.token,undefined);
   const denied=await fetch(base+'/api/v1/checkout/'+o.token+'/pay',{method:'POST',headers:{Origin:'https://evil.example','Content-Type':'application/json'},body:JSON.stringify(card)});assert.equal(denied.status,403);
-  const pay=await fetch(base+'/api/v1/checkout/'+o.token+'/pay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(card)});assert.equal(pay.status,200);
+  const pay=await fetch(base+'/api/v1/checkout/'+o.token+'/pay',{method:'POST',headers:{'Content-Type':'application/json',Origin:'http://localhost:18080'},body:JSON.stringify(card)});assert.equal(pay.status,200);
   const products=await (await fetch(base+'/api/v1/products')).json();assert.equal(products[0].quantity,3);
   const movements=await (await fetch(base+'/api/v1/movements')).json();assert.equal(movements[0].type,'out');
   const unknown=await fetch(base+'/api/v1/checkout/'+'0'.repeat(64));assert.equal(unknown.status,404);

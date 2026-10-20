@@ -12,6 +12,31 @@ function Test-DockerReady {
     } finally { $ErrorActionPreference = $previousPreference }
 }
 
+function Set-NextarEnvValue([string]$Path, [string]$Key, [string]$Value) {
+    $text = [System.IO.File]::ReadAllText($Path)
+    $pattern = '(?m)^' + [regex]::Escape($Key) + '=[^\r\n]*'
+    if ([regex]::IsMatch($text, $pattern)) { $text = [regex]::Replace($text, $pattern, ($Key + '=' + $Value)) }
+    else { $text += "`r`n$Key=$Value`r`n" }
+    [System.IO.File]::WriteAllText($Path, $text, (New-Object System.Text.UTF8Encoding($false)))
+}
+function Find-NextarPort([int]$Preferred) {
+    for ($candidate = $Preferred; $candidate -lt ($Preferred + 30); $candidate++) {
+        $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, $candidate)
+        try { $listener.Start(); return $candidate }
+        catch [System.Net.Sockets.SocketException] { }
+        finally { $listener.Stop() }
+    }
+    throw 'Nao foi encontrada uma porta livre. Feche outras instancias de teste e tente novamente.'
+}
+function Read-NextarPort([string]$Path, [string]$Key, [int]$Default) {
+    $value = [regex]::Match([System.IO.File]::ReadAllText($Path), ('(?m)^' + $Key + '=(\d+)\s*$'))
+    if ($value.Success) {
+        $number = [int]$value.Groups[1].Value
+        if ($number -ge 1024 -and $number -le 65000) { return $number }
+    }
+    return $Default
+}
+
 try {
     Write-Host 'NEXTAR - iniciar site e vendedor Telegram' -ForegroundColor Green
     Write-Host 'Nenhuma cobranca real. As compras de teste alteram seu estoque.'
@@ -74,17 +99,34 @@ try {
     $existingToken = $null
     $match = $null
 
+    # Reuse our running containers; otherwise choose free host ports without stopping other apps.
+    $runningBot = & docker compose ps --status running -q bot
+    if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel consultar os containers do Nextar.' }
+    $webPort = Read-NextarPort $envPath 'NEXTAR_WEB_PORT' 15173
+    $apiPort = Read-NextarPort $envPath 'NEXTAR_API_PORT' 18080
+    if (-not $runningBot) {
+        $webPort = Find-NextarPort $webPort
+        $apiPort = Find-NextarPort $apiPort
+        if ($apiPort -eq $webPort) { $apiPort = Find-NextarPort ($apiPort + 1) }
+    }
+    Set-NextarEnvValue $envPath 'NEXTAR_WEB_PORT' ([string]$webPort)
+    Set-NextarEnvValue $envPath 'NEXTAR_API_PORT' ([string]$apiPort)
+    $env:NEXTAR_WEB_PORT = [string]$webPort
+    $env:NEXTAR_API_PORT = [string]$apiPort
+    $siteUrl = 'http://localhost:' + $webPort
+    $apiUrl = 'http://localhost:' + $apiPort
+    Write-Host ('Enderecos deste teste: ' + $siteUrl + ' | API: ' + $apiUrl)
     Write-Host 'Preparando os containers. A primeira inicializacao pode levar alguns minutos...'
     & docker compose up --build -d --wait --wait-timeout 180
     if ($LASTEXITCODE -ne 0) {
         throw 'Falha ao iniciar. Consulte docker compose logs --tail 50 bot api e confira o Docker Desktop.'
     }
-    Start-Process 'http://localhost:5173'
-    Write-Host 'Site iniciado: http://localhost:5173' -ForegroundColor Green
+    Start-Process $siteUrl
+    Write-Host ('Site iniciado: ' + $siteUrl) -ForegroundColor Green
     Write-Host 'Cadastre um produto e consulte a area Vendas e bot.'
     $status = $null
     for ($attempt = 0; $attempt -lt 15; $attempt++) {
-        try { $status = Invoke-RestMethod 'http://localhost:8080/api/v1/bot/status' -TimeoutSec 5 } catch { $status = $null }
+        try { $status = Invoke-RestMethod ($apiUrl + '/api/v1/bot/status') -TimeoutSec 5 } catch { $status = $null }
         if ($status -and $status.state -eq 'connected') { break }
         if ($status -and $status.state -eq 'webhook_conflict') { break }
         Start-Sleep -Seconds 2

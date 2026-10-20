@@ -17,7 +17,7 @@ export function createApp({store=new Store(),config={}}={}){
   const permittedHosts=new Set(['localhost','127.0.0.1','[::1]']);
   let url;try{url=new URL(req.url,'http://'+req.headers.host);}catch{return json(res,400,{error:'URL inválida.'});}
   if(!permittedHosts.has(url.hostname))return json(res,403,{error:'Modo local: endereço não permitido.'});
-  if(req.headers.origin&&!['http://localhost:8080','http://127.0.0.1:8080','http://localhost:5173','http://127.0.0.1:5173',config.baseUrl].includes(req.headers.origin))return json(res,403,{error:'Origem não permitida.'});
+  if(req.headers.origin&&!['http://localhost:8080','http://127.0.0.1:8080','http://localhost:5173','http://127.0.0.1:5173',config.baseUrl,config.apiOrigin].includes(req.headers.origin))return json(res,403,{error:'Origem não permitida.'});
   try{
    const data=['POST','PUT','DELETE'].includes(req.method)?await body(req):{};
    if(config.apiTarget&&url.pathname.startsWith('/api/')&&!/^\/api\/v1\/(bot|orders|checkout)(?:\/|$)/.test(url.pathname)){
@@ -80,7 +80,7 @@ export function createApp({store=new Store(),config={}}={}){
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
  if(!process.env.DATABASE_URL)mkdirSync(resolve(root,'local/data'),{recursive:true});
  const port=Number(process.env.PORT||8080),config={baseUrl:process.env.PUBLIC_BASE_URL||`http://localhost:${port}`,storeName:process.env.STORE_NAME||'Nextar',policies:process.env.STORE_POLICIES||'Ambiente de testes. Retirada simulada, sem frete, entrega ou cobrança real.',contact:process.env.STORE_CONTACT,apiKey:process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL};
- config.apiTarget=process.env.API_TARGET;
+ config.apiTarget=process.env.API_TARGET;config.apiOrigin=process.env.PUBLIC_API_ORIGIN;
  const db=process.env.DATABASE_URL?await (await import('./postgres-store.mjs')).PostgresStore.open(process.env.DATABASE_URL):new Store(resolve(root,'local/data/nextar.sqlite'));
  const app=createApp({store:db,config}),controller=new AbortController();
  app.server.listen(port,process.env.BIND_HOST||'127.0.0.1',()=>console.log(`Nextar TESTE: http://localhost:${port} | ${process.env.DATABASE_URL?'PostgreSQL compartilhado':'SQLite local'} | sem cobrança real`));
