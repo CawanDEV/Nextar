@@ -2,6 +2,12 @@
 
 Fundação do MVP de controle de estoque: React + TypeScript, API Go e PostgreSQL.
 
+## Windows: iniciar com dois cliques
+
+Com o Docker Desktop instalado, abra **INICIAR-NEXTAR.cmd** na pasta do projeto. O inicializador abre/aguarda o Docker, atualiza uma copia Git limpa da branch main, cria o `.env` se necessario, pede o token com digitacao oculta na primeira vez, inicia os containers e abre o site. Ele preserva o `.env` existente, suas alteracoes locais e o volume do banco. Tambem funciona com a pasta extraida do ZIP do GitHub, sem Git instalado.
+
+O token deve ser colado apenas nessa janela local; nao e embutido no arquivo publico. Se ja estiver configurado, nao sera solicitado novamente. Node.js nao e necessario para usar Docker. A inicializacao precisa ser executada no computador que tem Docker Desktop, pois o GitHub e o chat nao iniciam o Docker desse computador.
+
 ## Executar com Docker — site e vendedor Telegram
 
 1. Copie `.env.example` para `.env` na raiz e preencha `TELEGRAM_BOT_TOKEN`.

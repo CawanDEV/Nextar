@@ -1,0 +1,23 @@
+name: Windows launcher
+on:
+  push:
+    branches: [main, feat/windows-start]
+    paths: ['INICIAR-NEXTAR.cmd', 'local/start-windows.ps1', '.github/workflows/windows-start.yml']
+  pull_request:
+    paths: ['INICIAR-NEXTAR.cmd', 'local/start-windows.ps1', '.github/workflows/windows-start.yml']
+permissions:
+  contents: read
+jobs:
+  syntax:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Windows PowerShell syntax
+        shell: powershell
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          $path = Join-Path $PWD 'local/start-windows.ps1'
+          [void][System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count -gt 0) { $parseErrors | Format-List; exit 1 }
+          Write-Host 'Windows PowerShell syntax OK. Interactive Docker startup is not executed in CI.'
