@@ -19,7 +19,7 @@ O bot, o checkout e a API Go usam **o mesmo PostgreSQL**, inclusive os produtos 
 
 - Site: http://localhost:5173 (também servido pelo gateway em http://localhost:8080).
 - API e checkout: http://localhost:8080.
-- PostgreSQL local: localhost:5432 (nextar/nextar).
+- PostgreSQL: disponível apenas na rede interna do Docker (`db:5432`), sem ocupar a porta 5432 do computador. Para acesso manual: `docker compose exec db psql -U nextar -d nextar`.
 - Logs do vendedor: `docker compose logs -f bot`.
 - Depois de alterar token/chave no `.env`: `docker compose up -d --force-recreate bot`.
 

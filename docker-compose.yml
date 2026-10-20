@@ -5,7 +5,6 @@ services:
       POSTGRES_DB: nextar
       POSTGRES_USER: nextar
       POSTGRES_PASSWORD: nextar
-    ports: ["127.0.0.1:5432:5432"]
     volumes: [nextar-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nextar -d nextar"]
