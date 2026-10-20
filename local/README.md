@@ -14,7 +14,7 @@ O site, o vendedor e o checkout deste modo usam **o mesmo arquivo SQLite** em `l
 
 ## Docker com o PostgreSQL do site
 
-O Docker agora executa quatro serviços: `db` (PostgreSQL existente), `api` (Go), `bot` (Telegram, pedidos e gateway), `web` (interface). Execute `docker compose up --build` com `TELEGRAM_BOT_TOKEN` no `.env` e abra http://localhost:5173. O checkout também funciona em http://localhost:8080.
+O Docker agora executa quatro serviços: `db` (PostgreSQL existente), `api` (Go), `bot` (Telegram, pedidos e gateway), `web` (interface). Execute `docker compose up --build` com `TELEGRAM_BOT_TOKEN` no `.env` e abra http://localhost:15173. O checkout também funciona em http://localhost:18080.
 
 O serviço `bot` usa `DATABASE_URL` para acessar os mesmos `products`, `movements` e `audit_logs` da API Go. Pedidos, sessões e offsets ficam em tabelas `sales_*`, no mesmo banco. Não há importação nem cópia do estoque para SQLite. As tabelas são criadas sem apagar os dados existentes e o volume `nextar-data` é mantido.
 

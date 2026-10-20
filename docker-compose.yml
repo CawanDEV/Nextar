@@ -16,7 +16,7 @@ services:
     environment:
       DATABASE_URL: postgres://nextar:nextar@db:5432/nextar?sslmode=disable
       PORT: "8080"
-      WEB_ORIGIN: http://localhost:5173
+      WEB_ORIGIN: http://localhost:${NEXTAR_WEB_PORT:-15173}
     expose: ["8080"]
     depends_on:
       db: {condition: service_healthy}
@@ -35,7 +35,8 @@ services:
       API_TARGET: http://api:8080
       BIND_HOST: 0.0.0.0
       PORT: "8080"
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:5173}
+      PUBLIC_BASE_URL: http://localhost:${NEXTAR_WEB_PORT:-15173}
+      PUBLIC_API_ORIGIN: http://localhost:${NEXTAR_API_PORT:-18080}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALLOWED_USER_IDS: ${TELEGRAM_ALLOWED_USER_IDS:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -43,7 +44,7 @@ services:
       STORE_NAME: ${STORE_NAME:-Nextar}
       STORE_POLICIES: ${STORE_POLICIES:-Ambiente de testes. Retirada simulada, sem frete, entrega ou cobrança real.}
       STORE_CONTACT: ${STORE_CONTACT:-Solicite atendimento humano ao responsável pela loja.}
-    ports: ["127.0.0.1:8080:8080"]
+    ports: ["127.0.0.1:${NEXTAR_API_PORT:-18080}:8080"]
     depends_on:
       api: {condition: service_healthy}
     healthcheck:
@@ -55,7 +56,7 @@ services:
     build: ./frontend
     environment:
       API_PROXY_TARGET: http://bot:8080
-    ports: ["127.0.0.1:5173:5173"]
+    ports: ["127.0.0.1:${NEXTAR_WEB_PORT:-15173}:5173"]
     depends_on:
       bot: {condition: service_healthy}
 volumes:

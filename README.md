@@ -6,19 +6,21 @@ Fundação do MVP de controle de estoque: React + TypeScript, API Go e PostgreSQ
 
 Com o Docker Desktop instalado, abra **INICIAR-NEXTAR.cmd** na pasta do projeto. O inicializador abre/aguarda o Docker, atualiza uma copia Git limpa da branch main, cria o `.env` se necessario, pede o token com digitacao oculta na primeira vez, inicia os containers e abre o site. Ele preserva o `.env` existente, suas alteracoes locais e o volume do banco. Tambem funciona com a pasta extraida do ZIP do GitHub, sem Git instalado.
 
+O inicializador escolhe portas livres e grava NEXTAR_WEB_PORT e NEXTAR_API_PORT no .env. Os padroes sao 15173 para o site e 18080 para o gateway; o PostgreSQL nao publica porta no computador. O endereco efetivo aparece na janela e o navegador e aberto automaticamente.
+
 O token deve ser colado apenas nessa janela local; nao e embutido no arquivo publico. Se ja estiver configurado, nao sera solicitado novamente. Node.js nao e necessario para usar Docker. A inicializacao precisa ser executada no computador que tem Docker Desktop, pois o GitHub e o chat nao iniciam o Docker desse computador.
 
 ## Executar com Docker — site e vendedor Telegram
 
 1. Copie `.env.example` para `.env` na raiz e preencha `TELEGRAM_BOT_TOKEN`.
 2. Execute `docker compose up --build`.
-3. Abra **http://localhost:5173** e entre em **Vendas e bot** para conferir a conexão ou usar o simulador.
+3. Abra **http://localhost:15173** e entre em **Vendas e bot** para conferir a conexão ou usar o simulador.
 4. Cadastre produtos e descrições, abra o bot no Telegram e envie `/start`.
 
 O bot, o checkout e a API Go usam **o mesmo PostgreSQL**, inclusive os produtos já cadastrados. Aprovar o cartão fictício reduz o estoque e grava pedido, movimentação e auditoria na mesma transação. O volume `nextar-data` é preservado; não execute `docker compose down -v` se quiser manter os dados.
 
-- Site: http://localhost:5173 (também servido pelo gateway em http://localhost:8080).
-- API e checkout: http://localhost:8080.
+- Site: http://localhost:15173 (também servido pelo gateway em http://localhost:18080).
+- API e checkout: http://localhost:18080.
 - PostgreSQL: disponível apenas na rede interna do Docker (`db:5432`), sem ocupar a porta 5432 do computador. Para acesso manual: `docker compose exec db psql -U nextar -d nextar`.
 - Logs do vendedor: `docker compose logs -f bot`.
 - Depois de alterar token/chave no `.env`: `docker compose up -d --force-recreate bot`.
